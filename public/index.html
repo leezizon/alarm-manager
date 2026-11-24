@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>알람 관리</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --line: #e3e6ea; --text: #1d2330; --muted: #6b7380; --accent: #2f6fde;
+    --critical: #d93025; --major: #e8710a; --minor: #b89400; --info: #5f6b7a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+         background: var(--bg); color: var(--text); font-size: 14px; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: #1d2330; color: #fff; }
+  header h1 { font-size: 17px; margin: 0; }
+  .conn { font-size: 12px; display: flex; align-items: center; gap: 6px; color: #c7ccd4; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #888; }
+  .dot.on { background: #34c759; } .dot.off { background: var(--critical); }
+  .spacer { flex: 1; }
+  header label { font-size: 12px; color: #c7ccd4; display: flex; align-items: center; gap: 6px; }
+  header input { padding: 6px 8px; border-radius: 6px; border: 1px solid #444; background: #2a3242; color: #fff; width: 140px; }
+  main { padding: 16px 20px; max-width: 1400px; margin: 0 auto; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .stat .label { color: var(--muted); font-size: 12px; }
+  .stat .value { font-size: 22px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+  .tabs button { border: 0; background: none; padding: 9px 14px; font-size: 14px; cursor: pointer; color: var(--muted);
+                 border-bottom: 2px solid transparent; }
+  .tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .panel { display: none; } .panel.active { display: block; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #fafbfc; color: var(--muted); font-weight: 500; font-size: 12px; white-space: nowrap; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .nowrap { white-space: nowrap; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; color: #fff; white-space: nowrap; }
+  .sev-critical { background: var(--critical); } .sev-major { background: var(--major); }
+  .sev-minor { background: var(--minor); } .sev-info { background: var(--info); }
+  .st { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; border: 1px solid var(--line); white-space: nowrap; }
+  .st-open { color: var(--critical); border-color: #f3c3bf; } .st-ack { color: var(--major); }
+  .st-in_progress { color: var(--accent); } .st-resolved { color: var(--muted); }
+  .btn { border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.danger { color: var(--critical); }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .muted { color: var(--muted); } .small { font-size: 12px; }
+  .empty { padding: 30px; text-align: center; color: var(--muted); background: var(--card); border: 1px dashed var(--line); border-radius: 8px; }
+  form.def { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 12px;
+             display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  form.def label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  form.def input, form.def select, form.def textarea { padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; color: var(--text); }
+  form.def .wide { grid-column: 1 / -1; }
+  form.def .row { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
+  form.def label.check { flex-direction: row; align-items: center; }
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1d2330; color: #fff;
+           padding: 10px 16px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+  #toast.show { opacity: 1; }
+  tr.flash { animation: flash 2s; }
+  @keyframes flash { from { background: #fff3cd; } to { background: transparent; } }
+  details summary { cursor: pointer; color: var(--accent); font-size: 12px; }
+  details ul { margin: 6px 0 0; padding-left: 16px; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>알람 관리</h1>
+  <span class="conn"><span id="dot" class="dot"></span><span id="connText">연결 중</span></span>
+  <span class="spacer"></span>
+  <label>처리자 <input id="user" placeholder="이름 입력" maxlength="50"></label>
+</header>
+
+<main>
+  <section class="stats" id="stats"></section>
+
+  <nav class="tabs">
+    <button data-tab="board" class="active">현황판</button>
+    <button data-tab="defs">알람 정의</button>
+    <button data-tab="history">처리 완료 이력</button>
+  </nav>
+
+  <section class="panel active" id="panel-board"><div id="board"></div></section>
+
+  <section class="panel" id="panel-defs">
+    <form class="def" id="defForm" autocomplete="off">
+      <label>알람명 *<input name="name" required maxlength="100" placeholder="예: CPU 사용률 높음"></label>
+      <label>대상 시스템 *<input name="system" required maxlength="100" placeholder="예: 결제 API 서버"></label>
+      <label>등급
+        <select name="severity">
+          <option value="critical">심각 (critical)</option>
+          <option value="major" selected>주요 (major)</option>
+          <option value="minor">경미 (minor)</option>
+          <option value="info">정보 (info)</option>
+        </select>
+      </label>
+      <label>임계치<input name="threshold" maxlength="200" placeholder="예: 5분간 90% 이상"></label>
+      <label>담당자<input name="owner" maxlength="100"></label>
+      <label class="wide">조치 매뉴얼<textarea name="manual" rows="3" maxlength="5000"></textarea></label>
+      <div class="row">
+        <label class="check"><input type="checkbox" name="enabled" checked> 사용</label>
+        <span class="spacer"></span>
+        <span class="muted small" id="editInfo"></span>
+        <button class="btn" type="button" id="cancelEdit" hidden>취소</button>
+        <button class="btn primary" type="submit" id="saveBtn">정의 추가</button>
+      </div>
+    </form>
+    <div id="defs"></div>
+  </section>
+
+  <section class="panel" id="panel-history"><div id="history"></div></section>
+</main>
+<div id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const SEV = { critical: '심각', major: '주요', minor: '경미', info: '정보' };
+const ST = { open: '발생', ack: '인지', in_progress: '조치중', resolved: '종료' };
+const NEXT = {
+  open: [['ack', '인지'], ['in_progress', '조치 시작'], ['resolved', '종료']],
+  ack: [['in_progress', '조치 시작'], ['resolved', '종료']],
+  in_progress: [['resolved', '종료']],
+  resolved: [],
+};
+let state = { defs: [], active: [], resolved: [], stats: null };
+let editing = null;
+const flashIds = new Set();
+
+// ---------- 공통 ----------
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (iso) => iso ? new Date(iso).toLocaleString('ko-KR', { hour12: false }) : '';
+const dur = (ms) => {
+  const m = Math.round(ms / 60000);
+  return m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간 ${m % 60}분`;
+};
+const user = () => $('#user').value.trim();
+
+$('#user').value = localStorage.getItem('alarm.user') || '';
+$('#user').addEventListener('change', () => localStorage.setItem('alarm.user', user()));
+
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function needUser() {
+  if (user()) return false;
+  toast('처리자 이름을 먼저 입력해 주세요');
+  $('#user').focus();
+  return true;
+}
+
+async function api(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'X-User': encodeURIComponent(user()) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || res.statusText);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+async function run(fn) {
+  try { await fn(); }
+  catch (err) {
+    toast(err.message);
+    if (err.status === 409) loadAll();
+  }
+}
+
+// ---------- 데이터 ----------
+async function loadAll() {
+  const [defs, active, resolved, stats] = await Promise.all([
+    api('GET', '/api/definitions'),
+    api('GET', '/api/events?status=active'),
+    api('GET', '/api/events?status=resolved&limit=200'),
+    api('GET', '/api/stats'),
+  ]);
+  state = { defs: defs.items, active: active.items, resolved: resolved.items, stats };
+  render();
+}
+
+let reloadTimer = null;
+function scheduleReload() {
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(() => loadAll().catch((e) => toast(e.message)), 150);
+}
+
+// ---------- 화면 ----------
+function render() { renderStats(); renderBoard(); renderDefs(); renderHistory(); }
+
+function renderStats() {
+  const s = state.stats;
+  const items = [
+    ['미처리 알람', s.active],
+    ['심각', s.bySeverity.critical, 'var(--critical)'],
+    ['주요', s.bySeverity.major, 'var(--major)'],
+    ['경미', s.bySeverity.minor],
+    ['정보', s.bySeverity.info],
+    ['오늘 종료', s.resolvedToday],
+    ['평균 처리시간(오늘)', s.avgResolveMin == null ? '-' : s.avgResolveMin + '분'],
+  ];
+  $('#stats').innerHTML = items.map(([l, v, c]) =>
+    `<div class="stat"><div class="label">${l}</div><div class="value"${c && v ? ` style="color:${c}"` : ''}>${v}</div></div>`).join('');
+  document.title = s.active ? `(${s.active}) 알람 관리` : '알람 관리';
+}
+
+function renderBoard() {
+  if (!state.active.length) { $('#board').innerHTML = '<div class="empty">처리할 알람이 없습니다</div>'; return; }
+  $('#board').innerHTML = `<table><thead><tr>
+      <th>등급</th><th>알람 / 시스템</th><th>메시지</th><th class="num">횟수</th>
+      <th>최초 발생</th><th>최근 발생</th><th>상태</th><th>처리</th></tr></thead><tbody>
+    ${state.active.map((e) => `<tr class="${flashIds.has(e.id) ? 'flash' : ''}">
+      <td><span class="badge sev-${e.severity}">${SEV[e.severity]}</span></td>
+      <td><b>${esc(e.name)}</b><div class="muted small">${esc(e.system)}</div></td>
+      <td>${esc(e.message)}${e.source ? `<div class="muted small">${esc(e.source)}</div>` : ''}</td>
+      <td class="num">${e.count}</td>
+      <td class="nowrap small">${fmt(e.firstOccurredAt)}</td>
+      <td class="nowrap small">${fmt(e.lastOccurredAt)}</td>
+      <td><span class="st st-${e.status}">${ST[e.status]}</span>${e.ackBy ? `<div class="muted small">${esc(e.ackBy)}</div>` : ''}</td>
+      <td><div class="actions">${NEXT[e.status].map(([to, label]) =>
+        `<button class="btn${to === 'resolved' ? ' primary' : ''}" data-act="transition" data-id="${e.id}" data-to="${to}" data-version="${e.version}">${label}</button>`).join('')}</div></td>
+    </tr>`).join('')}</tbody></table>`;
+  flashIds.clear();
+}
+
+function renderDefs() {
+  if (!state.defs.length) { $('#defs').innerHTML = '<div class="empty">등록된 알람 정의가 없습니다. 위에서 추가해 주세요</div>'; return; }
+  $('#defs').innerHTML = `<table><thead><tr>
+      <th>등급</th><th>시스템</th><th>알람명</th><th>임계치</th><th>담당자</th><th>사용</th><th>수정</th><th></th></tr></thead><tbody>
+    ${state.defs.map((d) => `<tr>
+      <td><span class="badge sev-${d.severity}">${SEV[d.severity]}</span></td>
+      <td>${esc(d.system)}</td>
+      <td><b>${esc(d.name)}</b>${d.manual ? `<details><summary>조치 매뉴얼</summary><div class="small" style="white-space:pre-wrap">${esc(d.manual)}</div></details>` : ''}</td>
+      <td>${esc(d.threshold)}</td>
+      <td>${esc(d.owner)}</td>
+      <td>${d.enabled ? '사용' : '<span class="muted">중지</span>'}</td>
+      <td class="small muted nowrap">${fmt(d.updatedAt)}<br>${esc(d.updatedBy)} · v${d.version}</td>
+      <td><div class="actions">
+        <button class="btn" data-act="raise" data-id="${d.id}"${d.enabled ? '' : ' disabled'}>테스트 발생</button>
+        <button class="btn" data-act="edit" data-id="${d.id}">수정</button>
+        <button class="btn danger" data-act="delete" data-id="${d.id}" data-version="${d.version}">삭제</button>
+      </div></td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+function renderHistory() {
+  if (!state.resolved.length) { $('#history').innerHTML = '<div class="empty">처리 완료된 알람이 없습니다</div>'; return; }
+  $('#history').innerHTML = `<table><thead><tr>
+      <th>등급</th><th>알람 / 시스템</th><th class="num">횟수</th><th>최초 발생</th><th>종료</th><th>처리시간</th><th>처리 이력</th></tr></thead><tbody>
+    ${state.resolved.map((e) => `<tr>
+      <td><span class="badge sev-${e.severity}">${SEV[e.severity]}</span></td>
+      <td><b>${esc(e.name)}</b><div class="muted small">${esc(e.system)}</div></td>
+      <td class="num">${e.count}</td>
+      <td class="nowrap small">${fmt(e.firstOccurredAt)}</td>
+      <td class="nowrap small">${fmt(e.resolvedAt)}<div class="muted">${esc(e.resolvedBy)}</div></td>
+      <td class="nowrap">${dur(e.durationMs)}</td>
+      <td><details><summary>${e.history.length}건</summary><ul>
+        ${e.history.map((h) => `<li>${fmt(h.at)} · ${esc(h.by)} · <b>${ST[h.action]}</b>${h.note ? ' — ' + esc(h.note) : ''}</li>`).join('')}
+      </ul></details></td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+// ---------- 동작 ----------
+document.querySelector('.tabs').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x === b));
+  document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + b.dataset.tab));
+});
+
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-act]');
+  if (!b) return;
+  const { act, id } = b.dataset;
+  const version = Number(b.dataset.version);
+
+  if (act === 'transition') {
+    if (needUser()) return;
+    const note = prompt(`'${b.textContent}' 처리 메모 (선택)`, '');
+    if (note === null) return;
+    run(async () => { await api('POST', `/api/events/${id}/transition`, { status: b.dataset.to, note, version }); });
+  }
+  if (act === 'raise') {
+    const message = prompt('테스트 알람 메시지', '수동 테스트 발생');
+    if (message === null) return;
+    run(async () => {
+      const r = await api('POST', '/api/events', { definitionId: id, message, source: '화면에서 수동 발생' });
+      toast(r.deduplicated ? `처리 중인 알람에 합쳐졌습니다 (${r.event.count}회)` : '알람이 발생했습니다');
+    });
+  }
+  if (act === 'edit') startEdit(state.defs.find((d) => d.id === id));
+  if (act === 'delete') {
+    if (needUser() || !confirm('이 알람 정의를 삭제할까요?')) return;
+    run(async () => { await api('DELETE', `/api/definitions/${id}?version=${version}`); toast('삭제했습니다'); });
+  }
+});
+
+const form = $('#defForm');
+function startEdit(d) {
+  editing = d;
+  for (const k of ['name', 'system', 'severity', 'threshold', 'owner', 'manual']) form.elements[k].value = d[k] || '';
+  form.elements.enabled.checked = d.enabled;
+  $('#saveBtn').textContent = '수정 저장';
+  $('#cancelEdit').hidden = false;
+  $('#editInfo').textContent = `v${d.version} 수정 중`;
+  form.scrollIntoView({ behavior: 'smooth' });
+}
+function resetForm() {
+  editing = null;
+  form.reset();
+  $('#saveBtn').textContent = '정의 추가';
+  $('#cancelEdit').hidden = true;
+  $('#editInfo').textContent = '';
+}
+$('#cancelEdit').addEventListener('click', resetForm);
+
+form.addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  if (needUser()) return;
+  const body = {};
+  for (const k of ['name', 'system', 'severity', 'threshold', 'owner', 'manual']) body[k] = form.elements[k].value;
+  body.enabled = form.elements.enabled.checked;
+  run(async () => {
+    if (editing) {
+      body.version = editing.version;
+      await api('PUT', `/api/definitions/${editing.id}`, body);
+      toast('수정했습니다');
+    } else {
+      await api('POST', '/api/definitions', body);
+      toast('추가했습니다');
+    }
+    resetForm();
+  });
+});
+
+// ---------- 실시간 연결 ----------
+function setConn(on) {
+  $('#dot').className = 'dot ' + (on ? 'on' : 'off');
+  $('#connText').textContent = on ? '실시간 연결됨' : '연결 끊김 (재연결 중)';
+}
+function connect() {
+  const es = new EventSource('/api/stream');
+  es.onopen = () => { setConn(true); scheduleReload(); }; // 재연결 시 놓친 변경을 다시 불러온다
+  es.onerror = () => setConn(false);
+  es.addEventListener('change', (ev) => {
+    const c = JSON.parse(ev.data);
+    if (c.col === 'events' && c.rec) {
+      flashIds.add(c.id);
+      if (c.op === 'insert' && c.rec.severity === 'critical') toast(`심각 알람 발생: ${c.rec.system} / ${c.rec.name}`);
+    }
+    scheduleReload();
+  });
+}
+
+connect();
+loadAll().catch((e) => toast(e.message));
+</script>
+</body>
+</html>

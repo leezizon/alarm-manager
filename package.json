@@ -1,0 +1,13 @@
+{
+  "name": "alarm-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "내부망 공유용 알람 관리 서버 (Node 14 내장 모듈만 사용, 외부 의존성 없음)",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/run-tests.js"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
